@@ -1,6 +1,6 @@
 --- Error Statistics (Linear vs Exponential) ---
-  Mean Absolute Error (MAE) : 0.60 years
-  RMSE                      : 0.77 years
-  Std Dev of Error          : 0.61 years
-  Max Absolute Error        : 1.71 years  @ diameter = 7.88 m
-  Min Absolute Error        : 0.00 years  @ diameter = 3.13 m
+  Mean Absolute Error (MAE) : 0.86 years
+  RMSE                      : 1.32 years
+  Std Dev of Error          : 1.32 years
+  Max Absolute Error        : 4.31 years  @ CPA = 110.74 m²
+  Min Absolute Error        : 0.01 years  @ CPA = 15.08 m²
