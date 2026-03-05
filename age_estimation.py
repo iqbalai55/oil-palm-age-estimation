@@ -1,5 +1,6 @@
 from lowner_jon_ellipse import welzl
 import numpy as np
+from scipy.spatial import ConvexHull
 
 CPA_THRESHOLD = 86  # m2 (area)
 
@@ -17,35 +18,35 @@ def compute_cpa(ellipse, gsd):
 # Since crown diameter is defined as the maximum horizontal distance 
 # across the crown, it is more accurate to compute it directly from 
 # the segmented polygon by finding the maximum pairwise distance.
-def compute_crown_diameter_from_polygon(points, gsd):
-    max_dist = 0.0
-    n = len(points)
+def compute_crown_diameter_from_polygon(points, gsd=1.0):
+    """
+    Compute the crown diameter using rotating calipers on the convex hull.
+    Returns the diameter in the same units as gsd.
+    """
+    points = np.asarray(points)
+    
+    # compute convex hull
+    hull = ConvexHull(points)
+    hull_points = points[hull.vertices]
 
-    for i in range(n):
-        for j in range(i + 1, n):
-            dist = np.linalg.norm(points[i] - points[j])
-            if dist > max_dist:
-                max_dist = dist
+    # use rotating calipers on hull points
+    max_sq, _ = rotating_calipers_diameter(hull_points)
+    return np.sqrt(max_sq) * gsd
 
-    return max_dist * gsd
 
-# jus for viz
 def compute_crown_diameter_points_from_polygon(points, gsd=1.0):
     """
-    Returns the two points that define the polygon's true crown diameter.
+    Returns the two points on the convex hull that define the true crown diameter.
     """
-    max_dist = 0
-    pt1, pt2 = None, None
+    points = np.asarray(points)
+    
+    # compute convex hull
+    hull = ConvexHull(points)
+    hull_points = points[hull.vertices]
 
-    n = len(points)
-    for i in range(n):
-        for j in range(i + 1, n):
-            dist = np.linalg.norm(points[i] - points[j])
-            if dist > max_dist:
-                max_dist = dist
-                pt1, pt2 = points[i], points[j]
-
-    return pt1, pt2
+    # get points of max distance
+    max_sq, (pt1, pt2) = rotating_calipers_diameter(hull_points)
+    return np.array(pt1) * gsd, np.array(pt2) * gsd
 
 
 # The linear CPA-based age model is valid only for young palms 
@@ -91,3 +92,38 @@ def age_estimation_using_diameter(diameter):
         return None
     
     return 0.7344 * np.exp(0.2733 * diameter)
+
+
+def rotating_calipers_diameter(points):
+    points = np.asarray(points)
+    n = len(points)
+    if n < 2:
+        return 0, (None, None)
+
+    def cross(o, a, b):
+        return (a[0]-o[0])*(b[1]-o[1]) - (a[1]-o[1])*(b[0]-o[0])
+
+    max_dist = 0
+    pt1 = pt2 = points[0]
+    j = 1
+
+    for i in range(n):
+        next_i = (i + 1) % n
+        while True:
+            next_j = (j + 1) % n
+            if cross(points[i], points[next_i], points[next_j]) > cross(points[i], points[next_i], points[j]):
+                j = next_j
+            else:
+                break
+
+        d1 = np.linalg.norm(points[i] - points[j])
+        d2 = np.linalg.norm(points[i] - points[(j+1)%n])
+
+        if d1 > max_dist:
+            max_dist = d1
+            pt1, pt2 = points[i], points[j]
+        if d2 > max_dist:
+            max_dist = d2
+            pt1, pt2 = points[i], points[(j+1)%n]
+
+    return max_dist, (pt1, pt2)
