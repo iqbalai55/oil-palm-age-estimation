@@ -5,9 +5,9 @@ from scipy.spatial import ConvexHull
 CPA_THRESHOLD = 86  # m2 (area)
 
 
-def compute_cpa(ellipse, gsd):
-    if ellipse is None:
-        return None
+def compute_cpa(points, gsd):
+    
+    ellipse = welzl(points)
 
     _, a, b, _ = ellipse
     return np.pi * a * b * (gsd ** 2)
@@ -55,11 +55,8 @@ def compute_crown_diameter_points_from_polygon(points, gsd=1.0):
 # model loses reliability. Therefore, a diameter-based nonlinear
 # model is used for mature palms.def estimate_age(points, gsd):
 def estimate_age(points, gsd):
-    ellipse = welzl(points)
-    if ellipse is None:
-        return None
-
-    cpa = compute_cpa(ellipse, gsd)
+    
+    cpa = compute_cpa(points, gsd)
 
     if cpa <= CPA_THRESHOLD:
         return age_estimation_using_cpa(cpa)

@@ -6,6 +6,7 @@ from scipy.spatial.distance import pdist
 from age_estimation import (
     estimate_age,
     compute_crown_diameter_points_from_polygon,
+    compute_crown_diameter_from_polygon,
     age_estimation_using_diameter,
     age_estimation_using_cpa,
     compute_cpa,
@@ -51,7 +52,7 @@ def visualize_polygons(polygon_data):
         center, semi_major, semi_minor, angle_rad = ellipse
         angle_deg = np.degrees(angle_rad)
 
-        p1, p2 = compute_crown_diameter_points_from_polygon(points)
+        p1, p2 = compute_crown_diameter_points_from_polygon(points, GSD)
         diameter = np.linalg.norm(p1 - p2)
 
         ax = axes[i]
@@ -135,7 +136,7 @@ def run_simulation(crown_points_list):
     for points in crown_points_list:
         ellipse = welzl(points)
         cpa = compute_cpa(ellipse, GSD)
-        computed_D = np.max(pdist(points)) * GSD
+        computed_D = compute_crown_diameter_from_polygon(points, GSD)
 
         ages_linear.append(age_estimation_using_cpa(cpa))
         ages_exp.append(age_estimation_using_diameter(computed_D))
@@ -156,6 +157,47 @@ def sort_and_filter_results(computed_diameters, ages_linear, ages_exp, ages_pipe
     mask = ap_sorted <= max_cpa_age
     return (cd_sorted[mask], al_sorted[mask], ae_sorted[mask], ap_sorted[mask])
 
+def plot_cpa_vs_diameter_from_synthetic(synthetic_crowns, gsd=1, cpa_limit=None):
+    """
+    Given synthetic crown points, compute CPA and crown diameter and plot CPA vs Diameter.
+    
+    Args:
+        synthetic_crowns (list of np.array): Each element is (N,2) points of a crown polygon.
+        gsd (float): Ground Sampling Distance scaling factor.
+        cpa_limit (float, optional): Draw a horizontal line to show CPA validity limit.
+    """
+    computed_diameters = []
+    cpa_values = []
+
+    for points in synthetic_crowns:
+        ellipse = welzl(points)
+        cpa = compute_cpa(ellipse, gsd)
+        diameter = compute_crown_diameter_from_polygon(points)
+
+        computed_diameters.append(diameter)
+        cpa_values.append(cpa)
+
+    computed_diameters = np.array(computed_diameters)
+    cpa_values = np.array(cpa_values)
+
+    # Plot
+    plt.figure(figsize=(10, 6))
+    plt.plot(computed_diameters, cpa_values, color="#2ca02c", linewidth=2.5, label="CPA")
+    
+    if cpa_limit is not None:
+        plt.axhline(y=cpa_limit, color="red", linestyle="--", linewidth=2, alpha=0.8)
+        plt.text(computed_diameters[0], cpa_limit + 0.5, f"CPA Limit = {cpa_limit} m²",
+                 color="red", bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
+    
+    plt.xlabel("Crown Diameter (m)")
+    plt.ylabel("Crown Projection Area (m²)")
+    plt.title("CPA vs Crown Diameter (Synthetic Data)")
+    plt.grid(alpha=0.3)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+    return computed_diameters, cpa_values
 
 def plot_model_comparison(cd_sorted, al_sorted, ae_sorted, ap_sorted, target_age_limit):
     """Plot age vs crown diameter for all models."""
@@ -269,25 +311,20 @@ if __name__ == "__main__":
     if polygon_data:
         visualize_polygons(polygon_data)
 
-    # 3. Generate synthetic crown points (optional visualization)
     synthetic_crowns = generate_synthetic_data(diameter_range, visualize=True)
+    
+    computed_diameters, cpa_values = plot_cpa_vs_diameter_from_synthetic(synthetic_crowns, gsd=1, cpa_limit=86)
 
-    # 4. Run simulation to compute diameters, CPA, and age estimates
     computed_diameters, ages_linear, ages_exp, ages_pipeline = run_simulation(synthetic_crowns)
 
-    # 5. Sort and filter results for ages ≤ 13 years (CPA validity range)
     diam_f, al_f, ae_f, ap_sorted = sort_and_filter_results(
         computed_diameters, ages_linear, ages_exp, ages_pipeline
     )
 
-    # 6. Plot comparison of all models
     plot_model_comparison(computed_diameters, ages_linear, ages_exp, ages_pipeline, TARGET_AGE_LIMIT)
 
-    # 7. Plot linear vs exponential model comparison within CPA valid range
     plot_linear_vs_exponential(diam_f, al_f, ae_f)
 
-    # 8. Plot absolute error between models
     error, error_abs = plot_absolute_error(diam_f, al_f, ae_f)
 
-    # 9. Print error statistics
     print_error_statistics(error, error_abs, diam_f)
