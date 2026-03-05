@@ -36,46 +36,73 @@ def compute_max_diameter(target_age):
     return np.linspace(1, max_diameter, 50)
 
 
-def visualize_polygons(polygon_data):
-    """Visualize example polygon data with fitted ellipses and crown diameters."""
+def visualize_polygons(polygon_data, verbose=True):
+    """Visualize example polygon data with fitted ellipses and crown diameters, with optional verbose output."""
+
     fig, axes = plt.subplots(1, len(polygon_data), figsize=(12, 6))
     axes = np.atleast_1d(axes)
 
+    if verbose:
+        print(f"\nVisualizing {len(polygon_data)} polygon(s)...")
+
     for i, poly_str in enumerate(polygon_data):
+        # Parse coordinates
         tokens = poly_str.strip().split()
         coords = np.array(list(map(float, tokens[1:])))  # skip class label
         if len(coords) % 2 != 0:
+            if verbose:
+                print(f"  Warning: polygon {i+1} has odd coordinate count — dropping last value.")
             coords = coords[:-1]
         points = coords.reshape(-1, 2)
 
+        # Fit ellipse
         ellipse = welzl(points)
+        if ellipse is None:
+            if verbose:
+                print(f"  Polygon {i+1}: Could not fit ellipse (degenerate points). Skipping.")
+            continue
         center, semi_major, semi_minor, angle_rad = ellipse
         angle_deg = np.degrees(angle_rad)
 
-        p1, p2 = compute_crown_diameter_points_from_polygon(points, GSD)
-        diameter = np.linalg.norm(p1 - p2)
+        # Compute crown diameter points
+        diameter, p1, p2 = compute_crown_diameter_points_from_polygon(points, GSD)
 
+        if verbose:
+            print(f"  Polygon {i+1}:")
+            print(f"    - Points: {len(points)}")
+            print(f"    - Ellipse center: {center}")
+            print(f"    - Semi-major axis: {semi_major:.2f}, Semi-minor axis: {semi_minor:.2f}")
+            print(f"    - Rotation angle: {angle_deg:.2f}°")
+            print(f"    - Crown diameter: {diameter:.2f} m")
+
+        # Plotting
         ax = axes[i]
-        ax.add_patch(Polygon(points, closed=True, facecolor="green", alpha=0.3))
-        ax.scatter(points[:, 0], points[:, 1], c="darkgreen", s=10, alpha=0.7)
-        ax.add_patch(Ellipse(
+        poly_patch = Polygon(points, closed=True, facecolor="green", alpha=0.3, label="Polygon Mask")
+        ax.add_patch(poly_patch)
+        pts_scatter = ax.scatter(points[:, 0], points[:, 1], c="darkgreen", s=10, alpha=0.7, label="Polygon Points")
+        ellipse_patch = Ellipse(
             xy=center,
             width=2*semi_major,
             height=2*semi_minor,
             angle=angle_deg,
             edgecolor="red",
             facecolor="none",
-            linewidth=2
-        ))
-        ax.plot([p1[0], p2[0]], [p1[1], p2[1]], color="blue", linestyle="--", linewidth=2)
-        ax.scatter([p1[0], p2[0]], [p1[1], p2[1]], color="orange", s=30)
+            linewidth=2,
+            label="Fitted Ellipse"
+        )
+        ax.add_patch(ellipse_patch)
+        line_diameter, = ax.plot([p1[0], p2[0]], [p1[1], p2[1]], color="blue", linestyle="--", linewidth=2, label=f"Crown Diameter = {diameter:.2f}")
+        farthest_pts = ax.scatter([p1[0], p2[0]], [p1[1], p2[1]], color="orange", s=30, label="Farthest Points")
+
         ax.set_aspect("equal")
         ax.set_title(f"Oil Palm {i+1}")
         ax.grid(True, alpha=0.3)
+        ax.legend(fontsize=8)
 
     plt.tight_layout()
     plt.show()
-
+    if verbose:
+        print("Visualization complete!")
 
 def generate_synthetic_data(diameter_range, visualize=False):
     """
@@ -134,8 +161,7 @@ def run_simulation(crown_points_list):
     ages_linear, ages_exp, ages_pipeline = [], [], []
 
     for points in crown_points_list:
-        ellipse = welzl(points)
-        cpa = compute_cpa(ellipse, GSD)
+        cpa = compute_cpa(points, GSD)
         computed_D = compute_crown_diameter_from_polygon(points, GSD)
 
         ages_linear.append(age_estimation_using_cpa(cpa))
@@ -157,36 +183,57 @@ def sort_and_filter_results(computed_diameters, ages_linear, ages_exp, ages_pipe
     mask = ap_sorted <= max_cpa_age
     return (cd_sorted[mask], al_sorted[mask], ae_sorted[mask], ap_sorted[mask])
 
-def plot_cpa_vs_diameter_from_synthetic(synthetic_crowns, gsd=1, cpa_limit=None):
+def plot_cpa_vs_diameter_from_synthetic(synthetic_crowns, gsd=1, cpa_limit=None, fit_degree=2, verbose=True):
     """
-    Given synthetic crown points, compute CPA and crown diameter and plot CPA vs Diameter.
+    Given synthetic crown points, compute CPA and crown diameter, plot scatter,
+    fit a polynomial, and show the fitted equation on the plot.
     
     Args:
         synthetic_crowns (list of np.array): Each element is (N,2) points of a crown polygon.
         gsd (float): Ground Sampling Distance scaling factor.
         cpa_limit (float, optional): Draw a horizontal line to show CPA validity limit.
+        fit_degree (int): Degree of polynomial fit (default 2 for quadratic).
+        verbose (bool): Whether to print polynomial coefficients.
     """
     computed_diameters = []
     cpa_values = []
 
     for points in synthetic_crowns:
-        ellipse = welzl(points)
-        cpa = compute_cpa(ellipse, gsd)
-        diameter = compute_crown_diameter_from_polygon(points)
-
+        cpa = compute_cpa(points, gsd)
+        diameter = compute_crown_diameter_from_polygon(points, gsd)
         computed_diameters.append(diameter)
         cpa_values.append(cpa)
 
     computed_diameters = np.array(computed_diameters)
     cpa_values = np.array(cpa_values)
 
-    # Plot
+    # Scatter plot
     plt.figure(figsize=(10, 6))
-    plt.plot(computed_diameters, cpa_values, color="#2ca02c", linewidth=2.5, label="CPA")
+    plt.scatter(computed_diameters, cpa_values, color="#2ca02c", s=60, alpha=0.7, label="Synthetic CPA points")
     
+    # Fit polynomial
+    coeffs = np.polyfit(computed_diameters, cpa_values, deg=fit_degree)
+    poly_fit = np.poly1d(coeffs)
+    x_fit = np.linspace(computed_diameters.min(), computed_diameters.max(), 200)
+    y_fit = poly_fit(x_fit)
+    plt.plot(x_fit, y_fit, color="blue", linewidth=2.5, label=f"Degree {fit_degree} fit")
+
+    # Show polynomial formula on plot
+    formula_terms = [f"{coeffs[i]:.3f} x^{fit_degree-i}" for i in range(len(coeffs)-1)]
+    formula_terms.append(f"{coeffs[-1]:.3f}")
+    formula_str = " + ".join(formula_terms)
+    plt.text(0.05, 0.95, f"Fit: CPA = {formula_str}", transform=plt.gca().transAxes,
+             fontsize=10, verticalalignment='top', bbox=dict(facecolor='white', alpha=0.7))
+
+    if verbose:
+        print("Polynomial coefficients (highest degree first):", coeffs)
+        print("Fitted formula:")
+        print("CPA =", formula_str)
+
+    # Optional CPA limit line
     if cpa_limit is not None:
         plt.axhline(y=cpa_limit, color="red", linestyle="--", linewidth=2, alpha=0.8)
-        plt.text(computed_diameters[0], cpa_limit + 0.5, f"CPA Limit = {cpa_limit} m²",
+        plt.text(computed_diameters[0], cpa_limit + 0.5, f"CPA Limit = {cpa_limit:.2f} m²",
                  color="red", bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
     
     plt.xlabel("Crown Diameter (m)")
@@ -196,8 +243,7 @@ def plot_cpa_vs_diameter_from_synthetic(synthetic_crowns, gsd=1, cpa_limit=None)
     plt.legend()
     plt.tight_layout()
     plt.show()
-
-    return computed_diameters, cpa_values
+    
 
 def plot_model_comparison(cd_sorted, al_sorted, ae_sorted, ap_sorted, target_age_limit):
     """Plot age vs crown diameter for all models."""
@@ -250,10 +296,26 @@ def plot_absolute_error(diam_f, al_f, ae_f):
     plt.grid(alpha=0.3)
     plt.tight_layout()
     plt.show()
-    return error, error_abs
 
 
-def print_error_statistics(error, error_abs, diam_f):
+def print_error_statistics(diam_f, ages_linear, ages_exp):
+    """
+    Print error statistics between linear and exponential age estimations.
+
+    Args:
+        diam_f (np.array): Filtered/sorted diameters.
+        ages_linear (np.array): Corresponding linear age estimations (same length as diam_f).
+        ages_exp (np.array): Corresponding exponential age estimations (same length as diam_f).
+    """
+    # Ensure all arrays have the same length
+    min_len = min(len(diam_f), len(ages_linear), len(ages_exp))
+    diam_f = diam_f[:min_len]
+    ages_linear = ages_linear[:min_len]
+    ages_exp = ages_exp[:min_len]
+
+    error = ages_linear - ages_exp
+    error_abs = np.abs(error)
+    
     mae = np.mean(error_abs)
     rmse = np.sqrt(np.mean(error ** 2))
     std_err = np.std(error)
@@ -313,18 +375,19 @@ if __name__ == "__main__":
 
     synthetic_crowns = generate_synthetic_data(diameter_range, visualize=True)
     
-    computed_diameters, cpa_values = plot_cpa_vs_diameter_from_synthetic(synthetic_crowns, gsd=1, cpa_limit=86)
+    plot_cpa_vs_diameter_from_synthetic(synthetic_crowns, gsd=1, cpa_limit=86)
 
     computed_diameters, ages_linear, ages_exp, ages_pipeline = run_simulation(synthetic_crowns)
-
+    # Sort and filter results
     diam_f, al_f, ae_f, ap_sorted = sort_and_filter_results(
-        computed_diameters, ages_linear, ages_exp, ages_pipeline
+        computed_diameters, ages_linear, ages_exp, ages_pipeline, max_cpa_age=TARGET_AGE_LIMIT
     )
 
-    plot_model_comparison(computed_diameters, ages_linear, ages_exp, ages_pipeline, TARGET_AGE_LIMIT)
+    plot_model_comparison(diam_f, al_f, ae_f, ap_sorted, TARGET_AGE_LIMIT)
+
 
     plot_linear_vs_exponential(diam_f, al_f, ae_f)
 
-    error, error_abs = plot_absolute_error(diam_f, al_f, ae_f)
+    plot_absolute_error(diam_f, al_f, ae_f)
 
-    print_error_statistics(error, error_abs, diam_f)
+    print_error_statistics(diam_f, al_f, ae_f)

@@ -69,7 +69,7 @@ def compute_crown_diameter_points_from_polygon(points, gsd=1.0):
 
     # get points of max distance
     max_dist, (pt1, pt2) = rotating_calipers_diameter(hull_points)
-    return np.array(pt1) * gsd, np.array(pt2) * gsd
+    return max_dist, np.array(pt1) * gsd, np.array(pt2) * gsd
 
 
 # The linear CPA-based age model is valid only for young palms 
