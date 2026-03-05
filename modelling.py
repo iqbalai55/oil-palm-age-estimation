@@ -33,7 +33,7 @@ valid_idx = np.where(age_search >= TARGET_AGE_LIMIT)[0][0]
 max_diameter = diameter_search[valid_idx]
 print(f"  → Maximum diameter for {TARGET_AGE_LIMIT} years ≈ {max_diameter:.2f} m")
 
-diameter_range = np.linspace(1, max_diameter, 100)
+diameter_range = np.linspace(1, max_diameter, 50)
 
 
 # =====================================

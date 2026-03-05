@@ -30,8 +30,8 @@ def compute_crown_diameter_from_polygon(points, gsd=1.0):
     hull_points = points[hull.vertices]
 
     # use rotating calipers on hull points
-    max_sq, _ = rotating_calipers_diameter(hull_points)
-    return np.sqrt(max_sq) * gsd
+    max_dist, (pt1, pt2) = rotating_calipers_diameter(hull_points)
+    return max_dist * gsd
 
 
 def compute_crown_diameter_points_from_polygon(points, gsd=1.0):
@@ -45,7 +45,7 @@ def compute_crown_diameter_points_from_polygon(points, gsd=1.0):
     hull_points = points[hull.vertices]
 
     # get points of max distance
-    max_sq, (pt1, pt2) = rotating_calipers_diameter(hull_points)
+    max_dist, (pt1, pt2) = rotating_calipers_diameter(hull_points)
     return np.array(pt1) * gsd, np.array(pt2) * gsd
 
 
