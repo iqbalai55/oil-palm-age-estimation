@@ -5,9 +5,32 @@ from scipy.spatial import ConvexHull
 CPA_THRESHOLD = 86  # m2 (area)
 
 
-def compute_cpa(points, gsd):
-    
-    ellipse = welzl(points)
+def compute_cpa(points, gsd=1.0, use_hull=True):
+    """
+    Compute the crown projection area (CPA) of a set of points.
+
+    Parameters:
+        points: np.array of shape (n,2), crown polygon points
+        gsd: ground sampling distance
+        use_hull: if True, fit ellipse only on convex hull for speed
+
+    Returns:
+        cpa: crown projection area in same units as gsd**2
+    """
+
+    if use_hull:
+        # use only convex hull points for speed
+        hull = ConvexHull(points)
+        points_fit = points[hull.vertices]
+    else:
+        points_fit = points
+
+    ellipse = welzl(points_fit)
+    if ellipse is None:
+        # fallback if welzl fails (e.g., degenerate points)
+        x_span = np.max(points[:, 0]) - np.min(points[:, 0])
+        y_span = np.max(points[:, 1]) - np.min(points[:, 1])
+        return np.pi * (x_span / 2) * (y_span / 2) * (gsd ** 2)
 
     _, a, b, _ = ellipse
     return np.pi * a * b * (gsd ** 2)
