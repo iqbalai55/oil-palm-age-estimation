@@ -155,9 +155,10 @@ def run_simulation(crown_points_list):
         - Age estimates (linear CPA, exponential diameter, piecewise pipeline)
     
     Returns:
-        computed_diameters, ages_linear, ages_exp, ages_pipeline
+        computed_diameters, computed_cpa, ages_linear, ages_exp, ages_pipeline
     """
     computed_diameters = []
+    computed_cpa = []
     ages_linear, ages_exp, ages_pipeline = [], [], []
 
     for points in crown_points_list:
@@ -167,21 +168,42 @@ def run_simulation(crown_points_list):
         ages_linear.append(age_estimation_using_cpa(cpa))
         ages_exp.append(age_estimation_using_diameter(computed_D))
         ages_pipeline.append(estimate_age(points, GSD))
+
         computed_diameters.append(computed_D)
+        computed_cpa.append(cpa)
 
-    return np.array(computed_diameters), np.array(ages_linear), np.array(ages_exp), np.array(ages_pipeline)
+    return (
+        np.array(computed_diameters),
+        np.array(computed_cpa),
+        np.array(ages_linear),
+        np.array(ages_exp),
+        np.array(ages_pipeline),
+    )
 
 
-def sort_and_filter_results(computed_diameters, ages_linear, ages_exp, ages_pipeline, max_cpa_age=13):
-    """Sort by diameter and filter for CPA valid range (≤ max_cpa_age)."""
-    idx = np.argsort(computed_diameters)
-    cd_sorted = computed_diameters[idx]
+
+def sort_and_filter_results_cpa(computed_cpa, computed_diameters, ages_linear, ages_exp, ages_pipeline, max_cpa_age=13):
+    """
+    Sort by CPA and filter results for CPA-valid age range (≤ max_cpa_age).
+
+    Returns:
+        cpa_sorted, diam_sorted, al_sorted, ae_sorted, ap_sorted
+    """
+    idx = np.argsort(computed_cpa)
+    cpa_sorted = computed_cpa[idx]
+    diam_sorted = computed_diameters[idx]
     al_sorted = ages_linear[idx]
     ae_sorted = ages_exp[idx]
     ap_sorted = ages_pipeline[idx]
 
     mask = ap_sorted <= max_cpa_age
-    return (cd_sorted[mask], al_sorted[mask], ae_sorted[mask], ap_sorted[mask])
+    return (
+        cpa_sorted[mask],
+        diam_sorted[mask],
+        al_sorted[mask],
+        ae_sorted[mask],
+        ap_sorted[mask],
+    )
 
 def plot_cpa_vs_diameter_from_synthetic(synthetic_crowns, gsd=1, cpa_limit=None, fit_degree=2, verbose=True):
     """
@@ -245,22 +267,26 @@ def plot_cpa_vs_diameter_from_synthetic(synthetic_crowns, gsd=1, cpa_limit=None,
     plt.show()
     
 
-def plot_model_comparison(cd_sorted, al_sorted, ae_sorted, ap_sorted, target_age_limit):
-    """Plot age vs crown diameter for all models."""
+def plot_model_comparison_cpa(cpa_sorted, al_sorted, ae_sorted, ap_sorted, target_age_limit):
+    """Plot age vs Crown Projection Area (CPA) for all models."""
     plt.figure(figsize=(12, 8))
-    plt.plot(cd_sorted, ap_sorted, color="black", linewidth=4, label="Piecewise Model")
-    plt.plot(cd_sorted, al_sorted, color="#2ca02c", linewidth=2.5, alpha=0.9, label="Linear CPA Model (≤13 yrs)")
-    plt.plot(cd_sorted, ae_sorted, color="#ff7f0e", linewidth=2.5, alpha=0.9, label="Exponential Diameter Model")
-    plt.axhline(y=13, color="red", linewidth=2, linestyle="--", alpha=0.8)
-    plt.text(1, 13.5, "CPA Validity Limit (13 years)", color="red", bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
-    plt.xlabel("Crown Diameter (m)")
+    plt.plot(cpa_sorted, ap_sorted, color="black", linewidth=4, label="Piecewise Model")
+    plt.plot(cpa_sorted, al_sorted, color="#2ca02c", linewidth=2.5, alpha=0.9, label="Linear CPA Model (≤13 yrs)")
+    plt.plot(cpa_sorted, ae_sorted, color="#ff7f0e", linewidth=2.5, alpha=0.9, label="Exponential Diameter Model")
+    
+    # CPA validity limit horizontal line (optional, if you have a limit in m²)
+    cpa_limit = 86  # adjust if needed
+    plt.axvline(x=cpa_limit, color="red", linewidth=2, linestyle="--", alpha=0.8)
+    plt.text(cpa_limit + 1, target_age_limit*0.95, f"CPA Validity Limit ({cpa_limit} m²)",
+             color="red", bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
+    
+    plt.xlabel("Crown Projection Area (m²)")
     plt.ylabel("Age (years)")
     plt.title(f"Oil Palm Age Estimation — Model Comparison (≤ {target_age_limit} Years)")
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.yticks(np.arange(0, target_age_limit+1, 1))
     plt.ylim(0, target_age_limit)
-    plt.xlim(0, 16)
     plt.tight_layout()
     plt.show()
 
@@ -292,6 +318,38 @@ def plot_absolute_error(diam_f, al_f, ae_f):
     plt.xlabel("Crown Diameter (m)")
     plt.ylabel("Absolute Age Difference (years)")
     plt.title("Absolute Error Between Linear and Exponential Models")
+    plt.legend()
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+    plt.show()
+    
+def plot_linear_vs_exponential_cpa(cpa_f, al_f, ae_f):
+    """Plot comparison between linear CPA and exponential diameter models with error area using CPA."""
+    plt.figure(figsize=(12, 6))
+    plt.plot(cpa_f, al_f, label="Linear CPA", color="#2ca02c", linewidth=2.5)
+    plt.plot(cpa_f, ae_f, label="Exponential Diameter", color="#ff7f0e", linewidth=2.5)
+    plt.fill_between(cpa_f, al_f, ae_f, color="purple", alpha=0.2, label="Difference Area")
+    plt.xlabel("Crown Projection Area (m²)")
+    plt.ylabel("Age (years)")
+    plt.title("Oil Palm Age Estimation: Linear CPA vs Exponential Diameter (CPA-based)")
+    plt.legend()
+    plt.grid(alpha=0.3)
+    plt.yticks(np.arange(0, 19, 1))
+    plt.ylim(0, 18)
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_absolute_error_cpa(cpa_f, al_f, ae_f):
+    """Plot absolute error between linear and exponential models using CPA."""
+    error = al_f - ae_f
+    error_abs = np.abs(error)
+    plt.figure(figsize=(12, 6))
+    plt.plot(cpa_f, error_abs, label="|Linear − Exponential|", color="purple", linewidth=2)
+    plt.axhline(0, color="black", linestyle="--", alpha=0.7)
+    plt.xlabel("Crown Projection Area (m²)")
+    plt.ylabel("Absolute Age Difference (years)")
+    plt.title("Absolute Error Between Linear and Exponential Models (CPA-based)")
     plt.legend()
     plt.grid(alpha=0.3)
     plt.tight_layout()
@@ -331,6 +389,38 @@ def print_error_statistics(diam_f, ages_linear, ages_exp):
     print(f"  Max Absolute Error        : {max_err:.2f} years  @ diameter = {diam_at_max_err:.2f} m")
     print(f"  Min Absolute Error        : {min_err:.2f} years  @ diameter = {diam_at_min_err:.2f} m")
 
+def print_error_statistics_cpa(cpa_f, ages_linear, ages_exp):
+    """
+    Print error statistics between linear CPA and exponential age estimations using CPA as reference.
+
+    Args:
+        cpa_f (np.array): Filtered/sorted CPA values.
+        ages_linear (np.array): Corresponding linear age estimations (same length as cpa_f).
+        ages_exp (np.array): Corresponding exponential age estimations (same length as cpa_f).
+    """
+    # Ensure all arrays have the same length
+    min_len = min(len(cpa_f), len(ages_linear), len(ages_exp))
+    cpa_f = cpa_f[:min_len]
+    ages_linear = ages_linear[:min_len]
+    ages_exp = ages_exp[:min_len]
+
+    error = ages_linear - ages_exp
+    error_abs = np.abs(error)
+    
+    mae = np.mean(error_abs)
+    rmse = np.sqrt(np.mean(error ** 2))
+    std_err = np.std(error)
+    max_err = np.max(error_abs)
+    min_err = np.min(error_abs)
+    cpa_at_max_err = cpa_f[np.argmax(error_abs)]
+    cpa_at_min_err = cpa_f[np.argmin(error_abs)]
+
+    print("\n--- Error Statistics (Linear vs Exponential) ---")
+    print(f"  Mean Absolute Error (MAE) : {mae:.2f} years")
+    print(f"  RMSE                      : {rmse:.2f} years")
+    print(f"  Std Dev of Error          : {std_err:.2f} years")
+    print(f"  Max Absolute Error        : {max_err:.2f} years  @ CPA = {cpa_at_max_err:.2f} m²")
+    print(f"  Min Absolute Error        : {min_err:.2f} years  @ CPA = {cpa_at_min_err:.2f} m²")
 
 # ===============================
 # MAIN EXECUTION
@@ -377,17 +467,17 @@ if __name__ == "__main__":
     
     plot_cpa_vs_diameter_from_synthetic(synthetic_crowns, gsd=1, cpa_limit=86)
 
-    computed_diameters, ages_linear, ages_exp, ages_pipeline = run_simulation(synthetic_crowns)
-    # Sort and filter results
-    diam_f, al_f, ae_f, ap_sorted = sort_and_filter_results(
-        computed_diameters, ages_linear, ages_exp, ages_pipeline, max_cpa_age=TARGET_AGE_LIMIT
+    computed_diameters, computed_cpa, ages_linear, ages_exp, ages_pipeline = run_simulation(synthetic_crowns)
+
+    cpa_sorted, diam_sorted, al_sorted, ae_sorted, ap_sorted = sort_and_filter_results_cpa(
+        computed_cpa, computed_diameters, ages_linear, ages_exp, ages_pipeline,
+        max_cpa_age=TARGET_AGE_LIMIT
     )
 
-    plot_model_comparison(diam_f, al_f, ae_f, ap_sorted, TARGET_AGE_LIMIT)
+    plot_model_comparison_cpa(cpa_sorted, al_sorted, ae_sorted, ap_sorted, TARGET_AGE_LIMIT)
 
+    plot_linear_vs_exponential_cpa(cpa_sorted, al_sorted, ae_sorted)
 
-    plot_linear_vs_exponential(diam_f, al_f, ae_f)
+    plot_absolute_error_cpa(cpa_sorted, al_sorted, ae_sorted)
 
-    plot_absolute_error(diam_f, al_f, ae_f)
-
-    print_error_statistics(diam_f, al_f, ae_f)
+    print_error_statistics_cpa(cpa_sorted, al_sorted, ae_sorted)
